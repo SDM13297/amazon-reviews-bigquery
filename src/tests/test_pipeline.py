@@ -12,7 +12,7 @@ import os
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
-from src.pipeline.amazon_pipeline import AmazonReviewsPipeline
+from pipeline.amazon_pipeline import AmazonReviewsPipeline
 
 class TestAmazonReviewsPipeline:
     """Test cases for AmazonReviewsPipeline class"""
