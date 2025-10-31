@@ -1,0 +1,47 @@
+name: Manual Pipeline Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+      batch_size:
+        description: 'Batch size for processing'
+        required: true
+        default: '1000'
+      max_batches:
+        description: 'Maximum batches (for testing)'
+        required: false
+        default: '5'
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Submit Dataproc job
+      run: |
+        CLUSTER_NAME="amazon-reviews-${{ github.event.inputs.environment }}"
+        BUCKET_NAME="${{ secrets.GCP_PROJECT_ID }}-amazon-reviews-${{ github.event.inputs.environment }}"
+        
+        gcloud dataproc jobs submit pyspark \
+          gs://${BUCKET_NAME}/code/src/pipeline/amazon_pipeline.py \
+          --cluster=${CLUSTER_NAME} \
+          --region=us-central1 \
+          -- \
+          --project-id ${{ secrets.GCP_PROJECT_ID }} \
+          --dataset-id amazon_reviews_${{ github.event.inputs.environment }} \
+          --table-id beauty_metadata \
+          --batch-size ${{ github.event.inputs.batch_size }} \
+          --max-batches ${{ github.event.inputs.max_batches }}

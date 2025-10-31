@@ -1,0 +1,266 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploy_pipeline:
+        description: 'Deploy the data pipeline'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+  
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.validate.outputs.environment }}
+    steps:
+    - name: Validate inputs
+      id: validate
+      run: |
+        echo "Deploying to environment: ${{ github.event.inputs.environment }}"
+        echo "Deploy pipeline: ${{ github.event.inputs.deploy_pipeline }}"
+        echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+
+  setup-gcp:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        export_default_credentials: true
+
+    - name: Configure gcloud
+      run: |
+        gcloud config set project ${{ env.GCP_PROJECT_ID }}
+        gcloud auth list
+        gcloud config list
+
+    - name: Enable required GCP APIs
+      run: |
+        gcloud services enable dataproc.googleapis.com
+        gcloud services enable bigquery.googleapis.com
+        gcloud services enable storage.googleapis.com
+        gcloud services enable compute.googleapis.com
+
+  deploy-storage:
+    needs: [validate, setup-gcp]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Create storage buckets
+      run: |
+        BUCKET_NAME="${{ env.GCP_PROJECT_ID }}-amazon-reviews-${{ needs.validate.outputs.environment }}"
+        
+        # Create bucket if it doesn't exist
+        if ! gsutil ls -b gs://${BUCKET_NAME} > /dev/null 2>&1; then
+          gsutil mb -l us-central1 gs://${BUCKET_NAME}
+          echo "Created bucket: gs://${BUCKET_NAME}"
+        else
+          echo "Bucket already exists: gs://${BUCKET_NAME}"
+        fi
+        
+        # Set lifecycle policy
+        cat > lifecycle.json << EOF
+        {
+          "rule": [
+            {
+              "action": {"type": "Delete"},
+              "condition": {"age": 30}
+            }
+          ]
+        }
+        EOF
+        
+        gsutil lifecycle set lifecycle.json gs://${BUCKET_NAME}
+
+    - name: Upload pipeline code
+      run: |
+        BUCKET_NAME="${{ env.GCP_PROJECT_ID }}-amazon-reviews-${{ needs.validate.outputs.environment }}"
+        
+        # Upload source code
+        gsutil -m cp -r src/ gs://${BUCKET_NAME}/code/
+        gsutil cp requirements.txt gs://${BUCKET_NAME}/code/
+        
+        echo "Code uploaded to: gs://${BUCKET_NAME}/code/"
+
+  deploy-bigquery:
+    needs: [validate, setup-gcp]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Create BigQuery dataset
+      run: |
+        DATASET_NAME="amazon_reviews_${{ needs.validate.outputs.environment }}"
+        
+        # Create dataset if it doesn't exist
+        if ! bq ls -d ${{ env.GCP_PROJECT_ID }}:${DATASET_NAME} > /dev/null 2>&1; then
+          bq mk \
+            --dataset \
+            --location=US \
+            --description="Amazon Reviews dataset for ${{ needs.validate.outputs.environment }} environment" \
+            ${{ env.GCP_PROJECT_ID }}:${DATASET_NAME}
+          echo "Created dataset: ${DATASET_NAME}"
+        else
+          echo "Dataset already exists: ${DATASET_NAME}"
+        fi
+
+  deploy-dataproc:
+    needs: [validate, setup-gcp, deploy-storage]
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_pipeline == 'true'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Create Dataproc cluster template
+      run: |
+        CLUSTER_NAME="amazon-reviews-${{ needs.validate.outputs.environment }}"
+        BUCKET_NAME="${{ env.GCP_PROJECT_ID }}-amazon-reviews-${{ needs.validate.outputs.environment }}"
+        
+        # Create cluster configuration
+        cat > cluster-config.yaml << EOF
+        clusterName: ${CLUSTER_NAME}
+        config:
+          masterConfig:
+            numInstances: 1
+            machineTypeUri: n1-standard-4
+            diskConfig:
+              bootDiskType: pd-standard
+              bootDiskSizeGb: 100
+          workerConfig:
+            numInstances: 2
+            machineTypeUri: n1-standard-2
+            diskConfig:
+              bootDiskType: pd-standard
+              bootDiskSizeGb: 100
+          secondaryWorkerConfig:
+            numInstances: 0
+          softwareConfig:
+            imageVersion: 2.0-debian10
+            properties:
+              spark:spark.sql.adaptive.enabled: "true"
+              spark:spark.sql.adaptive.coalescePartitions.enabled: "true"
+            optionalComponents:
+              - ZEPPELIN
+          gceClusterConfig:
+            zoneUri: us-central1-b
+            networkUri: default
+            subnetworkUri: default
+            internalIpOnly: false
+            serviceAccount: default
+            serviceAccountScopes:
+              - https://www.googleapis.com/auth/cloud-platform
+          initializationActions:
+            - executableFile: gs://${BUCKET_NAME}/scripts/init-cluster.sh
+        EOF
+        
+        echo "Cluster configuration created for: ${CLUSTER_NAME}"
+
+    - name: Create initialization script
+      run: |
+        BUCKET_NAME="${{ env.GCP_PROJECT_ID }}-amazon-reviews-${{ needs.validate.outputs.environment }}"
+        
+        # Create init script
+        cat > init-cluster.sh << 'EOF'
+        #!/bin/bash
+        # Install additional Python packages
+        pip3 install --upgrade pip
+        pip3 install datasets transformers
+        
+        # Configure Spark for BigQuery
+        wget -P /usr/lib/spark/jars https://storage.googleapis.com/spark-lib/bigquery/spark-bigquery-latest_2.12.jar
+        
+        echo "Cluster initialization completed"
+        EOF
+        
+        chmod +x init-cluster.sh
+        
+        # Upload to GCS
+        gsutil cp init-cluster.sh gs://${BUCKET_NAME}/scripts/
+        
+        echo "Initialization script uploaded"
+
+  test-deployment:
+    needs: [validate, deploy-storage, deploy-bigquery]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Test infrastructure connectivity
+      run: |
+        # Test BigQuery access
+        DATASET_NAME="amazon_reviews_${{ needs.validate.outputs.environment }}"
+        bq query --use_legacy_sql=false "SELECT 1 as test"
+        
+        # Test storage access
+        BUCKET_NAME="${{ env.GCP_PROJECT_ID }}-amazon-reviews-${{ needs.validate.outputs.environment }}"
+        echo "test" | gsutil cp - gs://${BUCKET_NAME}/test.txt
+        gsutil cat gs://${BUCKET_NAME}/test.txt
+        gsutil rm gs://${BUCKET_NAME}/test.txt
+        
+        echo "Infrastructure tests passed"
+
+  cleanup:
+    needs: [validate, test-deployment]
+    runs-on: ubuntu-latest
+    if: needs.validate.outputs.environment == 'dev'
+    steps:
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Clean up dev resources (optional)
+      run: |
+        echo "Cleanup step - can be used to remove temporary dev resources"
+        echo "Skipping cleanup for safety"
