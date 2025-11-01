@@ -1,6 +1,7 @@
 """
 Test configuration and fixtures for Amazon Reviews pipeline tests
 """
+
 import pytest
 import json
 from datetime import datetime
@@ -10,15 +11,18 @@ from pyspark.sql.types import *
 import tempfile
 import os
 
+
 @pytest.fixture(scope="session")
 def spark_session():
     """Create a test Spark session"""
-    return SparkSession.builder \
-        .appName("test-amazon-pipeline") \
-        .master("local[2]") \
-        .config("spark.sql.adaptive.enabled", "false") \
-        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+    return (
+        SparkSession.builder.appName("test-amazon-pipeline")
+        .master("local[2]")
+        .config("spark.sql.adaptive.enabled", "false")
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .getOrCreate()
+    )
+
 
 @pytest.fixture
 def sample_amazon_record():
@@ -39,8 +43,9 @@ def sample_amazon_record():
         "parent_asin": "B07ABC123",
         "bought_together": ["B07DEF456", "B07GHI789"],
         "subtitle": "Premium Beauty Product",
-        "author": "Beauty Brand"
+        "author": "Beauty Brand",
     }
+
 
 @pytest.fixture
 def sample_batch_data(sample_amazon_record):
@@ -54,6 +59,7 @@ def sample_batch_data(sample_amazon_record):
         batch.append(record)
     return batch
 
+
 @pytest.fixture
 def mock_bigquery_client():
     """Mock BigQuery client for testing"""
@@ -62,16 +68,18 @@ def mock_bigquery_client():
     mock_client.get_table.return_value = Mock()
     return mock_client
 
+
 @pytest.fixture
 def pipeline_config():
     """Test configuration for pipeline"""
     return {
         "project_id": "test-project",
-        "dataset_id": "test_dataset", 
+        "dataset_id": "test_dataset",
         "table_id": "test_table",
         "batch_size": 10,
-        "max_batches": 2
+        "max_batches": 2,
     }
+
 
 @pytest.fixture
 def temp_output_dir():
@@ -79,14 +87,12 @@ def temp_output_dir():
     with tempfile.TemporaryDirectory() as temp_dir:
         yield temp_dir
 
+
 @pytest.fixture(autouse=True)
 def setup_test_env():
     """Set up test environment variables"""
     original_env = os.environ.copy()
-    os.environ.update({
-        "TESTING": "true",
-        "GCP_PROJECT": "test-project"
-    })
+    os.environ.update({"TESTING": "true", "GCP_PROJECT": "test-project"})
     yield
     os.environ.clear()
     os.environ.update(original_env)

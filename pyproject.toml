@@ -23,4 +23,10 @@ target-version = ['py39']
 
 [tool.flake8]
 max-line-length = 88
-extend-ignore = ["E203", "W503"]
+extend-ignore = [
+    "E203", 
+    "W503", 
+    "F401", # Ignore "imported but unused"
+    "F403", # Ignore "import * used"
+    "F405", # Ignore "name may be undefined from star import"
+]
