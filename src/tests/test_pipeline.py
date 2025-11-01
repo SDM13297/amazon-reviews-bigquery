@@ -19,7 +19,7 @@ class TestAmazonReviewsPipeline:
     
     def test_pipeline_initialization(self, pipeline_config):
         """Test pipeline initialization with correct parameters"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id=pipeline_config["project_id"],
                 dataset_id=pipeline_config["dataset_id"], 
@@ -33,7 +33,7 @@ class TestAmazonReviewsPipeline:
 
     def test_spark_session_creation(self, pipeline_config):
         """Test Spark session is created with correct configuration"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession') as mock_spark:
+        with patch('pipeline.amazon_pipeline.SparkSession') as mock_spark:
             mock_builder = Mock()
             mock_spark.builder = mock_builder
             mock_builder.appName.return_value = mock_builder
@@ -52,7 +52,7 @@ class TestAmazonReviewsPipeline:
 
     def test_bigquery_schema_creation(self, pipeline_config):
         """Test BigQuery schema SQL generation"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id=pipeline_config["project_id"],
                 dataset_id=pipeline_config["dataset_id"],
@@ -72,7 +72,7 @@ class TestAmazonReviewsPipeline:
 
     def test_process_batch_data_valid_input(self, pipeline_config, sample_batch_data):
         """Test batch data processing with valid input"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id=pipeline_config["project_id"],
                 dataset_id=pipeline_config["dataset_id"],
@@ -95,7 +95,7 @@ class TestAmazonReviewsPipeline:
 
     def test_process_batch_data_handles_nulls(self, pipeline_config):
         """Test batch data processing handles null values correctly"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id=pipeline_config["project_id"],
                 dataset_id=pipeline_config["dataset_id"],
@@ -124,7 +124,7 @@ class TestAmazonReviewsPipeline:
 
     def test_process_batch_data_handles_complex_types(self, pipeline_config):
         """Test processing of complex nested data structures"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id=pipeline_config["project_id"],
                 dataset_id=pipeline_config["dataset_id"],
@@ -151,7 +151,7 @@ class TestAmazonReviewsPipeline:
 
     def test_process_batch_data_error_handling(self, pipeline_config):
         """Test batch processing handles errors gracefully"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id=pipeline_config["project_id"],
                 dataset_id=pipeline_config["dataset_id"],
@@ -165,14 +165,14 @@ class TestAmazonReviewsPipeline:
                 {"title": "Another Good Product"}  # Valid record
             ]
             
-            with patch('src.pipeline.amazon_pipeline.logger') as mock_logger:
+            with patch('pipeline.amazon_pipeline.logger') as mock_logger:
                 processed_batch = pipeline.process_batch_data(problematic_data)
                 
                 # Should process valid records and skip problematic ones
                 assert len(processed_batch) == 2
                 mock_logger.warning.assert_called()
 
-    @patch('src.pipeline.amazon_pipeline.SparkSession')
+    @patch('pipeline.amazon_pipeline.SparkSession')
     def test_write_to_bigquery_success(self, mock_spark, pipeline_config):
         """Test successful BigQuery write operation"""
         # Setup mocks
@@ -197,7 +197,7 @@ class TestAmazonReviewsPipeline:
         mock_write.format.assert_called_with("bigquery")
         mock_format.save.assert_called()
 
-    @patch('src.pipeline.amazon_pipeline.SparkSession')  
+    @patch('pipeline.amazon_pipeline.SparkSession')  
     def test_write_to_bigquery_failure(self, mock_spark, pipeline_config):
         """Test BigQuery write operation failure handling"""
         # Setup mocks to raise exception
@@ -212,7 +212,7 @@ class TestAmazonReviewsPipeline:
             table_id=pipeline_config["table_id"]
         )
         
-        with patch('src.pipeline.amazon_pipeline.logger') as mock_logger:
+        with patch('pipeline.amazon_pipeline.logger') as mock_logger:
             result = pipeline.write_to_bigquery(mock_df)
             
             assert result is False
@@ -220,7 +220,7 @@ class TestAmazonReviewsPipeline:
 
     def test_cleanup(self, pipeline_config):
         """Test resource cleanup"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession') as mock_spark_session:
+        with patch('pipeline.amazon_pipeline.SparkSession') as mock_spark_session:
             mock_spark = Mock()
             mock_spark_session.builder.appName.return_value.config.return_value.getOrCreate.return_value = mock_spark
             
@@ -238,9 +238,9 @@ class TestDataValidation:
     
     def test_numeric_conversion(self):
         """Test numeric data type conversions"""
-        from src.pipeline.amazon_pipeline import AmazonReviewsPipeline
+        from pipeline.amazon_pipeline import AmazonReviewsPipeline
         
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline("test", "test", "test")
             
             test_records = [
@@ -261,9 +261,9 @@ class TestDataValidation:
 
     def test_timestamp_addition(self):
         """Test automatic timestamp addition"""
-        from src.pipeline.amazon_pipeline import AmazonReviewsPipeline
+        from pipeline.amazon_pipeline import AmazonReviewsPipeline
         
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline("test", "test", "test")
             
             test_record = [{"title": "Test Product"}]

@@ -16,8 +16,8 @@ from pipeline.amazon_pipeline import AmazonReviewsPipeline
 class TestPipelineIntegration:
     """End-to-end integration tests"""
     
-    @patch('src.pipeline.amazon_pipeline.load_dataset')
-    @patch('src.pipeline.amazon_pipeline.SparkSession')
+    @patch('pipeline.amazon_pipeline.load_dataset')
+    @patch('pipeline.amazon_pipeline.SparkSession')
     def test_full_pipeline_small_dataset(self, mock_spark, mock_load_dataset, 
                                        pipeline_config, sample_batch_data):
         """Test complete pipeline with small dataset"""
@@ -63,8 +63,8 @@ class TestPipelineIntegration:
         # Verify BigQuery write was attempted
         mock_write.format.assert_called_with("bigquery")
 
-    @patch('src.pipeline.amazon_pipeline.load_dataset')
-    @patch('src.pipeline.amazon_pipeline.SparkSession')
+    @patch('pipeline.amazon_pipeline.load_dataset')
+    @patch('pipeline.amazon_pipeline.SparkSession')
     def test_pipeline_with_processing_errors(self, mock_spark, mock_load_dataset, 
                                            pipeline_config):
         """Test pipeline handles processing errors gracefully"""
@@ -103,7 +103,7 @@ class TestPipelineIntegration:
             table_id=pipeline_config["table_id"]
         )
         
-        with patch('src.pipeline.amazon_pipeline.logger') as mock_logger:
+        with patch('pipeline.amazon_pipeline.logger') as mock_logger:
             results = pipeline.run_pipeline(batch_size=5, max_batches=1)
             
             # Pipeline should complete despite errors
@@ -113,8 +113,8 @@ class TestPipelineIntegration:
             # Errors should be logged
             mock_logger.warning.assert_called()
 
-    @patch('src.pipeline.amazon_pipeline.load_dataset')
-    @patch('src.pipeline.amazon_pipeline.SparkSession') 
+    @patch('pipeline.amazon_pipeline.load_dataset')
+    @patch('pipeline.amazon_pipeline.SparkSession') 
     def test_pipeline_bigquery_failure_handling(self, mock_spark, mock_load_dataset,
                                                pipeline_config, sample_batch_data):
         """Test pipeline handles BigQuery write failures"""
@@ -140,7 +140,7 @@ class TestPipelineIntegration:
             table_id=pipeline_config["table_id"]
         )
         
-        with patch('src.pipeline.amazon_pipeline.logger') as mock_logger:
+        with patch('pipeline.amazon_pipeline.logger') as mock_logger:
             results = pipeline.run_pipeline(batch_size=5, max_batches=1)
             
             # Pipeline should handle failure gracefully
@@ -159,8 +159,8 @@ class TestPipelineIntegration:
                 "average_rating": 4.0
             })
         
-        with patch('src.pipeline.amazon_pipeline.load_dataset') as mock_load_dataset:
-            with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.load_dataset') as mock_load_dataset:
+            with patch('pipeline.amazon_pipeline.SparkSession'):
                 mock_dataset = Mock()
                 mock_dataset.__iter__ = Mock(return_value=iter(large_dataset))
                 mock_load_dataset.return_value = mock_dataset
@@ -187,7 +187,7 @@ class TestConfigurationIntegration:
     
     def test_table_full_name_construction(self, pipeline_config):
         """Test BigQuery table full name construction"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id="my-project",
                 dataset_id="amazon_data",
@@ -199,7 +199,7 @@ class TestConfigurationIntegration:
 
     def test_schema_sql_includes_table_name(self, pipeline_config):
         """Test that schema SQL includes the correct table name"""
-        with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.SparkSession'):
             pipeline = AmazonReviewsPipeline(
                 project_id="test-project-123",
                 dataset_id="test_dataset_456", 
@@ -214,14 +214,14 @@ class TestConfigurationIntegration:
 class TestPerformanceAndMetrics:
     """Test performance monitoring and metrics collection"""
     
-    @patch('src.pipeline.amazon_pipeline.time')
+    @patch('pipeline.amazon_pipeline.time')
     def test_performance_metrics_calculation(self, mock_time, pipeline_config):
         """Test that performance metrics are calculated correctly"""
         # Mock time.time() to return predictable values
         mock_time.time.side_effect = [0, 100]  # Start: 0, End: 100 seconds
         
-        with patch('src.pipeline.amazon_pipeline.load_dataset') as mock_load_dataset:
-            with patch('src.pipeline.amazon_pipeline.SparkSession'):
+        with patch('pipeline.amazon_pipeline.load_dataset') as mock_load_dataset:
+            with patch('pipeline.amazon_pipeline.SparkSession'):
                 # Create small dataset
                 test_data = [{"title": f"Product {i}"} for i in range(10)]
                 mock_dataset = Mock()
